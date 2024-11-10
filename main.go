@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"log"
-	"net/http"
 	"os"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 )
 
 var templates *template.Template
@@ -44,25 +45,40 @@ func main() {
 	}
 	saveJSON("relations.json", relations)
 
-	// Set up routes
-	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/artists", artistsHandler)
-	http.HandleFunc("/artist/", artistHandler)
-	http.HandleFunc("/locations", locationsHandler)
-	http.HandleFunc("/dates", datesHandler)
-	http.HandleFunc("/relations", relationsHandler)
+	// Initialize Gin router
+	router := gin.Default()
 
-	// New routes for artist-specific pages
-	http.HandleFunc("/artist/locations/", artistLocationsHandler)
-	http.HandleFunc("/artist/relations/", artistRelationsHandler)
-	http.HandleFunc("/artist/dates/", artistDatesHandler)
+	// Load HTML templates
+	router.SetHTMLTemplate(templates)
+	config := cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:4173", "http://localhost"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * 3600,
+	}
 
+	router.Use(cors.New(config))
 	// Serve static files
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	router.Static("/static", "./static")
+
+	// Routes
+	router.GET("/", indexHandler)
+	router.GET("/artists", artistsHandler)
+	router.GET("/artist/:id", artistHandler)
+	router.GET("/locations", locationsHandler)
+	router.GET("/dates", datesHandler)
+	router.GET("/relations", relationsHandler)
+
+	// Artist-specific routes
+	router.GET("/artist/locations/:id", artistLocationsHandler)
+	router.GET("/artist/relations/:id", artistRelationsHandler)
+	router.GET("/artist/dates/:id", artistDatesHandler)
 
 	// Start server
-	fmt.Println("Server is running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Println("Server is running on http://localhost:8080")
+	router.Run(":8080")
 }
 
 func saveJSON(filename string, data interface{}) error {

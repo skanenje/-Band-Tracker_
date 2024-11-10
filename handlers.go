@@ -7,45 +7,44 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-func indexHandler(w http.ResponseWriter, r *http.Request) {
-    artists, err := loadArtists()
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-
-    data := struct {
-        Artists []Artist
-    }{
-        Artists: artists,
-    }
-
-    templates.ExecuteTemplate(w, "index.html", data)
-}
-
-func artistsHandler(w http.ResponseWriter, r *http.Request) {
+// JSON API Handlers
+func indexHandler(c *gin.Context) {
 	artists, err := loadArtists()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	templates.ExecuteTemplate(w, "artists.html", artists)
+	c.JSON(http.StatusOK, gin.H{
+		"artists": artists,
+	})
 }
 
-func artistHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/artist/")
+func artistsHandler(c *gin.Context) {
+	artists, err := loadArtists()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, artists)
+}
+
+func artistHandler(c *gin.Context) {
+	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid artist ID", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid artist ID"})
 		return
 	}
 
 	artists, err := loadArtists()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -58,50 +57,48 @@ func artistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if artist.ID == 0 {
-		http.Error(w, "Artist not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Artist not found"})
 		return
 	}
 
-	templates.ExecuteTemplate(w, "artist.html", artist)
+	c.JSON(http.StatusOK, artist)
 }
 
-func locationsHandler(w http.ResponseWriter, r *http.Request) {
+func locationsHandler(c *gin.Context) {
 	locations, err := loadLocations()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	artists, err := loadArtists()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Create a map of artist IDs to names
 	artistNames := make(map[int]string)
 	for _, artist := range artists {
 		artistNames[artist.ID] = artist.Name
 	}
 
-	// Add artist names to locations
 	for i, location := range locations.Index {
 		locations.Index[i].Name = artistNames[location.ID]
 	}
 
-	templates.ExecuteTemplate(w, "locations.html", locations)
+	c.JSON(http.StatusOK, locations)
 }
 
-func datesHandler(w http.ResponseWriter, r *http.Request) {
+func datesHandler(c *gin.Context) {
 	dates, err := loadDates()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	artists, err := loadArtists()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -114,19 +111,19 @@ func datesHandler(w http.ResponseWriter, r *http.Request) {
 		dates.Index[i].Name = artistNames[date.ID]
 	}
 
-	templates.ExecuteTemplate(w, "dates.html", dates)
+	c.JSON(http.StatusOK, dates)
 }
 
-func relationsHandler(w http.ResponseWriter, r *http.Request) {
+func relationsHandler(c *gin.Context) {
 	relations, err := loadRelations()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	artists, err := loadArtists()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -139,7 +136,133 @@ func relationsHandler(w http.ResponseWriter, r *http.Request) {
 		relations.Index[i].Name = artistNames[relation.ID]
 	}
 
-	templates.ExecuteTemplate(w, "relations.html", relations)
+	c.JSON(http.StatusOK, relations)
+}
+
+// HTML Template Handlers
+func artistLocationsHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.HTML(http.StatusBadRequest, "error.html", gin.H{"error": "Invalid artist ID"})
+		return
+	}
+
+	artist, err := getArtistByID(id)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+		return
+	}
+
+	locations, err := fetchLocations()
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+		return
+	}
+
+	var artistLocations []string
+	for _, loc := range locations.Index {
+		if loc.ID == artist.ID {
+			artistLocations = loc.Locations
+			break
+		}
+	}
+
+	c.HTML(http.StatusOK, "artist_locations.html", gin.H{
+		"Name":      artist.Name,
+		"Locations": artistLocations,
+	})
+}
+
+func artistRelationsHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.HTML(http.StatusBadRequest, "error.html", gin.H{"error": "Invalid artist ID"})
+		return
+	}
+
+	artist, err := getArtistByID(id)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+		return
+	}
+
+	relations, err := fetchRelations()
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+		return
+	}
+
+	var artistRelations map[string][]string
+	for _, rel := range relations.Index {
+		if rel.ID == artist.ID {
+			artistRelations = rel.DatesLocations
+			break
+		}
+	}
+
+	c.HTML(http.StatusOK, "artist_relations.html", gin.H{
+		"Name":      artist.Name,
+		"Relations": artistRelations,
+	})
+}
+
+func artistDatesHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.HTML(http.StatusBadRequest, "error.html", gin.H{"error": "Invalid artist ID"})
+		return
+	}
+
+	artist, err := getArtistByID(id)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+		return
+	}
+
+	dates, err := fetchDates()
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+		return
+	}
+
+	var artistDates []string
+	for _, date := range dates.Index {
+		if date.ID == artist.ID {
+			artistDates = date.Dates
+			break
+		}
+	}
+
+	c.HTML(http.StatusOK, "artist_dates.html", gin.H{
+		"Name":  artist.Name,
+		"Dates": artistDates,
+	})
+}
+
+// Uncomment and modify if you want to implement the search functionality
+
+func searchHandler(c *gin.Context) {
+	query := c.Query("query")
+	artists, err := loadArtists()
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+		return
+	}
+
+	var searchResults []Artist
+	for _, artist := range artists {
+		if strings.Contains(strings.ToLower(artist.Name), strings.ToLower(query)) {
+			searchResults = append(searchResults, artist)
+		}
+	}
+
+	c.HTML(http.StatusOK, "artists.html", gin.H{
+		"Query":   query,
+		"Artists": searchResults,
+	})
 }
 
 func loadArtists() ([]Artist, error) {
@@ -190,119 +313,6 @@ func loadRelations() (RelationsData, error) {
 	return relations, err
 }
 
-func artistLocationsHandler(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/artist/locations/"))
-	if err != nil {
-		http.Error(w, "Invalid artist ID", http.StatusBadRequest)
-		return
-	}
-
-	artist, err := getArtistByID(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	locations, err := fetchLocations()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Find the locations for this specific artist
-	artistLocations := []string{}
-	for _, loc := range locations.Index {
-		if loc.ID == artist.ID {
-			artistLocations = loc.Locations
-			break
-		}
-	}
-	data := struct {
-		Name      string
-		Locations []string
-	}{
-		Name:      artist.Name,
-		Locations: artistLocations,
-	}
-
-	templates.ExecuteTemplate(w, "artist_locations.html", data)
-}
-
-func artistRelationsHandler(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/artist/relations/"))
-	if err != nil {
-		http.Error(w, "Invalid artist ID", http.StatusBadRequest)
-		return
-	}
-
-	artist, err := getArtistByID(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	relations, err := fetchRelations()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Find the relations for this specific artist
-	var artistRelations map[string][]string
-	for _, rel := range relations.Index {
-		if rel.ID == artist.ID {
-			artistRelations = rel.DatesLocations
-			break
-		}
-	}
-	data := struct {
-		Name      string
-		Relations map[string][]string
-	}{
-		Name:      artist.Name,
-		Relations: artistRelations,
-	}
-
-	templates.ExecuteTemplate(w, "artist_relations.html", data)
-}
-
-func artistDatesHandler(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/artist/dates/"))
-	if err != nil {
-		http.Error(w, "Invalid artist ID", http.StatusBadRequest)
-		return
-	}
-
-	artist, err := getArtistByID(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	dates, err := fetchDates()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var artistDates []string
-	for _, date := range dates.Index {
-		if date.ID == artist.ID {
-			artistDates = date.Dates
-			break
-		}
-	}
-	data := struct {
-		Name  string
-		Dates []string
-	}{
-		Name:  artist.Name,
-		Dates: artistDates,
-	}
-
-	templates.ExecuteTemplate(w, "artist_dates.html", data)
-}
-
 func getArtistByID(id int) (Artist, error) {
 	artists, err := loadArtists()
 	if err != nil {
@@ -318,23 +328,3 @@ func getArtistByID(id int) (Artist, error) {
 	return Artist{}, fmt.Errorf("artist not found")
 }
 
-// func SearchHandler(w http.ResponseWriter, r *http.Request) {
-//     query := r.URL.Query().Get("query")
-//     artists, err := loadArtists()
-//     if err != nil {
-//         http.Error(w, err.Error(), http.StatusInternalServerError)
-//         return
-//     }
-
-//     var searchResults []Artist
-//     for _, artist := range artists {
-//         if strings.Contains(strings.ToLower(artist.Name), strings.ToLower(query)) {
-//             searchResults = append(searchResults, artist)
-//         }
-//     }
-//     data := map[string]interface{}{
-//         "Query":   query,
-//         "Artists": searchResults,
-//     }
-//     templates.ExecuteTemplate(w, "artists.html", data)
-// }
